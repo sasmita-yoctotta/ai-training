@@ -1,7 +1,13 @@
-import json, statistics
-from xai_sdk import Client
-from xai_sdk.chat import system, user
-client = Client()
+import json, os, statistics
+
+from dotenv import load_dotenv
+from openai import OpenAI
+
+load_dotenv()          # reads GROQ_API_KEY from ../.env
+client = OpenAI(
+    api_key=os.environ["GROQ_API_KEY"],
+    base_url="https://api.groq.com/openai/v1",
+)
 
 JUDGE = """You grade an answer against reference material. Return JSON only:
 {"faithful": true|false, "faithful_reason": "...",
@@ -11,13 +17,17 @@ faithful = every claim in the answer is supported by the CONTEXT.
 correct  = the answer matches the REFERENCE ANSWER in substance."""
 
 def judge(question, context, answer_text, reference):
-    chat = client.chat.create(model="grok-4.6", temperature=0, response_format="json_object")
-    chat.append(system(JUDGE))
-    chat.append(user(
-        f"QUESTION:\n{question}\n\nCONTEXT:\n{context}\n\n"
-        f"ANSWER:\n{answer_text}\n\nREFERENCE ANSWER:\n{reference}"
-    ))
-    return json.loads(chat.sample().content)
+    r = client.chat.completions.create(
+        model="openai/gpt-oss-120b", temperature=0,
+        response_format={"type": "json_object"},
+        messages=[
+            {"role": "system", "content": JUDGE},
+            {"role": "user", "content":
+                f"QUESTION:\n{question}\n\nCONTEXT:\n{context}\n\n"
+                f"ANSWER:\n{answer_text}\n\nREFERENCE ANSWER:\n{reference}"},
+        ],
+    )
+    return json.loads(r.choices[0].message.content)
 
 def evaluate(golden, pipeline):
     """golden: [{question, reference, gold_chunk_ids}]"""

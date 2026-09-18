@@ -1,9 +1,17 @@
+import os
+
+from dotenv import load_dotenv
 from openai import OpenAI
-client = OpenAI()
+
+load_dotenv()          # reads GROQ_API_KEY from ../.env
+client = OpenAI(
+    api_key=os.environ["GROQ_API_KEY"],
+    base_url="https://api.groq.com/openai/v1",
+)
 
 def hyde(query: str) -> str:
     r = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model="openai/gpt-oss-20b",
         temperature=0.3,
         max_tokens=150,
         messages=[{

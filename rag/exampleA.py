@@ -1,9 +1,15 @@
 import json
+import os
 from dataclasses import dataclass
-from xai_sdk import Client
-from xai_sdk.chat import system, user
 
-client = Client()
+from dotenv import load_dotenv
+from openai import OpenAI
+
+load_dotenv()          # reads GROQ_API_KEY from ../.env
+client = OpenAI(
+    api_key=os.environ["GROQ_API_KEY"],
+    base_url="https://api.groq.com/openai/v1",
+)
 
 @dataclass
 class Retrieved:
@@ -25,13 +31,14 @@ Rules:
 5. Be concise. No preamble."""
 
 def multi_query(q: str, n: int = 3) -> list[str]:
-    chat = client.chat.create(model="grok-4.6", temperature=0.5, response_format="json_object")
-    chat.append(user(
-        f'Rewrite this search query {n} different ways, varying vocabulary '
-        f'and specificity. Return {{"queries": [...]}} only.\n\nQuery: {q}'
-    ))
-    r = chat.sample()
-    return [q, *json.loads(r.content)["queries"]]
+    r = client.chat.completions.create(
+        model="openai/gpt-oss-20b", temperature=0.5,
+        response_format={"type": "json_object"},
+        messages=[{"role": "user", "content":
+            f'Rewrite this search query {n} different ways, varying vocabulary '
+            f'and specificity. Return {{"queries": [...]}} only.\n\nQuery: {q}'}],
+    )
+    return [q, *json.loads(r.choices[0].message.content)["queries"]]
 
 def rrf_fuse(rankings: list[list[Retrieved]], k: int = 60) -> list[Retrieved]:
     scores, seen = {}, {}
@@ -60,10 +67,15 @@ def answer(question: str, retrieve_fn, top_k: int = 5) -> dict:
     fused    = rrf_fuse(rankings)[:top_k]
     ordered  = reorder_for_position(fused)
 
-    chat = client.chat.create(model="grok-4.6", temperature=0)
-    chat.append(system(ANSWER_SYSTEM))
-    chat.append(user(f"{build_context(ordered)}\n\nQuestion: {question}"))
-    text = chat.sample().content
+    r = client.chat.completions.create(
+        model="openai/gpt-oss-120b", temperature=0,
+        messages=[
+            {"role": "system", "content": ANSWER_SYSTEM},
+            {"role": "user", "content":
+                f"{build_context(ordered)}\n\nQuestion: {question}"},
+        ],
+    )
+    text = r.choices[0].message.content
 
     # verify citations refer to chunks we actually supplied
     supplied = {c.chunk_id for c in ordered}

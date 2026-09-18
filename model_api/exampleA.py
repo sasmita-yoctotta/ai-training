@@ -1,10 +1,16 @@
 import json
-from xai_sdk import Client
-from xai_sdk.chat import system, user
+import os
+
+from dotenv import load_dotenv
+from openai import OpenAI
 from pydantic import BaseModel, Field
 from typing import Literal, Optional
 
-client = Client()
+load_dotenv()          # reads GROQ_API_KEY from ../.env
+client = OpenAI(
+    api_key=os.environ["GROQ_API_KEY"],
+    base_url="https://api.groq.com/openai/v1",
+)
 
 class Invoice(BaseModel):
     invoice_number: Optional[str] = Field(description="null if not present")
@@ -24,11 +30,16 @@ SYSTEM = (
 )
 
 def extract(raw: str) -> Invoice:
-    chat = client.chat.create(model="grok-4.6", temperature=0)
-    chat.append(system(SYSTEM))
-    chat.append(user(f"<document>\n{raw}\n</document>"))
-    _, parsed = chat.parse(Invoice)
-    return parsed
+    r = client.chat.completions.parse(
+        model="openai/gpt-oss-20b",
+        temperature=0,
+        messages=[
+            {"role": "system", "content": SYSTEM},
+            {"role": "user", "content": f"<document>\n{raw}\n</document>"},
+        ],
+        response_format=Invoice,
+    )
+    return r.choices[0].message.parsed
 
 sample = """ACME INDUSTRIAL SUPPLIES
 Invoice #: INV-88214    Date: 2026-03-02
